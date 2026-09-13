@@ -1,28 +1,13 @@
-# Upstream stack fetched by scripts/21-fetch-stack.sh (Aerial, OAI, sample apps)
-/stack/
+# Local overrides for versions.env (image tags, namespace)
+versions.local.env
 
-# Helm dependency artifacts. Scope this to the vendored subdirectory Helm
-# creates INSIDE a chart -- a bare "charts/" also matches our own top-level
-# charts/ directory and silently stops the DU chart being committed at all.
-charts/*/charts/
-*.tgz
-.helmignore.bak
-
-# Inventory captures — may contain host details, MACs, IPs, serials.
-# THIS REPO IS PUBLIC: never commit these.
-aerial-inventory-*/
-ran-recipe-*/
-*-inventory-*.tar.gz
-*.pcap
-
-# Site-specific values (fronthaul MAC/VLAN, PCIe ids, cell identity, creds).
-# The tracked tree stays generic; per-deployment values live here.
-# Enforced by the pre-commit hook from scripts/install-guardrails.sh
-/config/*
-!/config/README.md
-!/config/site.example.yaml
-
-# kubeconfig / credentials — never commit
-kubeconfig*
+# Site configuration never belongs in this repo
+config/
+site.yaml
 *.kubeconfig
+kubeconfig*
 .env
+
+# Captures that carry host details, MACs, IPs
+*.pcap
+*-inventory-*.tar.gz

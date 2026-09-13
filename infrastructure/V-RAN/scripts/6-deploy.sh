@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy the CU and the DU onto the cluster from the manifests in deploy/ and
-# the ConfigMaps generated into config/rendered/manifests/.
+# the ConfigMaps the site supplies (see scripts/6-deploy.sh).
 #
 #   ./scripts/6-deploy.sh
 #   NAMESPACE=ran ./scripts/6-deploy.sh
@@ -17,13 +17,17 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/versions.env"
-[ -f "$ROOT/config/versions.env" ] && . "$ROOT/config/versions.env"
+[ -f "$ROOT/versions.local.env" ] && . "$ROOT/versions.local.env"
 . "$ROOT/scripts/lib.sh"
 
 NS="${NAMESPACE:-ran}"
-RENDERED="$ROOT/config/rendered"
-CMDIR="$RENDERED/manifests"
-OUT="$RENDERED/manifests/applied"
+OUT="${OUT:-$(mktemp -d)}"
+
+# The ConfigMaps carrying cell identity, PLMN, the CU/RIC/core addresses, the
+# peer MACs and the PCI addresses are NOT part of this repo and are not created
+# here. They are supplied per deployment and must already exist in the namespace.
+# The repo stays generic: nothing in it describes a particular radio or site.
+REQUIRED_CM="l1-config oai-cu-conf oai-du-high-conf"
 
 die() { printf '\033[31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 step(){ printf '\n\033[1m>> %s\033[0m\n' "$*"; }
@@ -31,10 +35,7 @@ step(){ printf '\n\033[1m>> %s\033[0m\n' "$*"; }
 step "Preflight"
 need_tool kubectl >/dev/null || die "kubectl unavailable"
 need_tool yq >/dev/null || die "yq unavailable"
-kubectl get nodes >/dev/null 2>&1 || die "no reachable cluster — run ./scripts/3-cluster.sh"
-for f in l1-config.yaml oai-du-conf.yaml oai-cu-conf.yaml; do
-  [ -f "$CMDIR/$f" ] || die "missing $CMDIR/$f — run ./scripts/4-render.sh"
-done
+kubectl get nodes >/dev/null 2>&1 || die "no reachable cluster (kubectl get nodes failed)"
 for var in IMAGE_DU_LOW IMAGE_DU_HIGH IMAGE_CU; do
   img="${!var:-}"; [ -n "$img" ] || die "$var unset in versions.env"
   docker image inspect "$img" >/dev/null 2>&1 \
@@ -51,20 +52,29 @@ if [ -z "$(kubectl get nodes -l yoy.ran/role=du-low -o name 2>/dev/null)" ]; the
        kubectl label node <gpu-host> yoy.ran/role=du-low"
 fi
 
-# The L1's FAPI TLV framing is decided at compile time and lives inside the
-# image now, so it cannot be checked from here the way a local build could.
-# docs/TROUBLESHOOTING.md section 1 is what a wrong one looks like.
-
 step "ConfigMaps"
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-for f in l1-config.yaml oai-du-conf.yaml oai-cu-conf.yaml; do
-  kubectl apply -n "$NS" -f "$CMDIR/$f" | sed 's/^/   /' || die "applying $f failed"
+missing=""
+for cm in $REQUIRED_CM; do
+  if kubectl get configmap -n "$NS" "$cm" >/dev/null 2>&1; then
+    echo "   found $cm"
+  else
+    missing="$missing $cm"
+  fi
 done
+[ -n "$missing" ] && die "missing ConfigMap(s) in namespace $NS:$missing
+       These carry the site's RAN configuration and are deliberately not in this
+       repo. Create them from your own configs, e.g.:
+         kubectl create configmap l1-config -n $NS \\
+           --from-file=cuphycontroller_site.yaml=<path> \\
+           --from-file=l2_adapter_config_site.yaml=<path> \\
+           --from-file=nvipc_l1_dpdk.yaml=<path>"
 
-# Hash what the pods actually mount, not the manifests that carry it.
-CFGHASH="$(cat "$RENDERED"/cuphycontroller_site.yaml "$RENDERED"/gnb-du.conf \
-                "$RENDERED"/gnb-cu.conf "$RENDERED"/l2_adapter_config_site.yaml 2>/dev/null \
-           | sha256sum | cut -c1-16)"
+# Roll the pods when the mounted configuration changes: the annotation tracks
+# the ConfigMaps' resourceVersions, so an edit to a config is a new rollout.
+CFGHASH="$(for cm in $REQUIRED_CM; do
+             kubectl get configmap -n "$NS" "$cm" -o jsonpath='{.metadata.resourceVersion}' 2>/dev/null
+           done | sha256sum | cut -c1-16)"
 echo "   config hash: $CFGHASH"
 
 step "Rendering deploy manifests"
@@ -129,8 +139,7 @@ if [ -z "$(kubectl get nodes -l yoy.ran/role=du-high -o name 2>/dev/null)" ]; th
    the same two mounted configs.
 MSG
 elif ! kubectl get configmap -n "$NS" oai-du-high-conf >/dev/null 2>&1; then
-  echo "   SKIPPED: ConfigMap oai-du-high-conf not found — ./scripts/4-render.sh"
-  echo "   does not generate the nvIPC configs yet (gnb.conf + nvipc.yaml)."
+  echo "   SKIPPED: ConfigMap oai-du-high-conf not found in namespace $NS."
 else
   kubectl apply -n "$NS" -f "$OUT/12-du-high.yaml" | sed 's/^/   /' || die "DU-High apply failed"
   kubectl rollout status -n "$NS" deploy/oai-du-high --timeout=300s \

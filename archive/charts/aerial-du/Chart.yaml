@@ -1,6 +1,0 @@
-apiVersion: v2
-name: aerial-du
-description: One GPU-accelerated DU — NVIDIA Aerial L1 + OAI L2/L3 in a single Pod
-type: application
-version: 0.1.0
-appVersion: "26-1-cubb"
