@@ -84,6 +84,14 @@ spec:
           args: ["-O", "/opt/oai-du/etc/gnb.conf"]
           env:
             - { name: NVIPC_CONFIG_FILE, value: /opt/oai-du/etc/nvipc.yaml }
+            # E2SM-AYYUR bridge. The E2 agent lives here, but the Ayyur dApp is
+            # co-located with the L1 on the DU-Low host -- E3 gives it the CSI
+            # through shared memory, which does not cross machines. So the agent
+            # connects out to the dApp instead of the localhost default.
+            #   :6001 REQ/REP  RIC -> dApp   (enroll / release)
+            #   :6002 SUB      dApp -> RIC   (latent reports)
+            - { name: AYYUR_DAPP_CTRL_EP,   value: "tcp://DU_LOW_HOST:6001" }
+            - { name: AYYUR_DAPP_LATENT_EP, value: "tcp://DU_LOW_HOST:6002" }
           volumeMounts:
             - { name: dshm,     mountPath: /dev/shm }
             - { name: hugepage, mountPath: /dev/hugepages }

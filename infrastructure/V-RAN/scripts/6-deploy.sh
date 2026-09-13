@@ -90,6 +90,8 @@ yq -i "
   .spec.template.metadata.annotations.\"vran/config-hash\" = \"$CFGHASH\" |
   (.spec.template.spec.containers[] | select(.name == \"oai-du-high\")).image = \"$IMAGE_DU_HIGH\"
 " "$OUT/12-du-high.yaml" || die "could not render the DU-High manifest"
+# The Ayyur dApp lives on the DU-Low host; the E2 agent connects out to it.
+sed -i "s|DU_LOW_HOST|${DU_LOW_HOST}|g" "$OUT/12-du-high.yaml"
 yq -i "
   .spec.template.metadata.annotations.\"vran/config-hash\" = \"$CFGHASH\" |
   (.spec.template.spec.containers[] | select(.name == \"oai-cu\")).image = \"$IMAGE_CU\"
