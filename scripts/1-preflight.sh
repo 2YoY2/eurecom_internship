@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Check that this host is ready to run Aerial L1. READ-ONLY: it changes nothing.
 #
-#   ./scripts/20-preflight.sh
+#   ./scripts/1-preflight.sh
 #
 # Host preparation (driver, kernel, DOCA/OFED, hugepages, CPU isolation, NIC
 # firmware, PTP) is deliberately OUT of scope for this repo -- it is done once
@@ -14,7 +14,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/versions.env"
-[ -f "$ROOT/site/versions.env" ] && . "$ROOT/site/versions.env"
+[ -f "$ROOT/config/versions.env" ] && . "$ROOT/config/versions.env"
 
 pass=0; warnc=0; failc=0
 ok()   { printf '  \033[32mPASS\033[0m  %s\n' "$*"; pass=$((pass+1)); }
@@ -57,10 +57,20 @@ fi
 sec "Memory / hugepages"
 HP_SZ="$(grep -i '^Hugepagesize' /proc/meminfo | awk '{print $2}')"
 HP_N="$(grep -i '^HugePages_Total' /proc/meminfo | awk '{print $2}')"
-if [ "${HP_SZ:-0}" = "1048576" ]; then ok "hugepage size: 1G"
-else warn "hugepage size: ${HP_SZ:-none} kB (expected 1048576 = 1G)"; fi
-if [ "${HP_N:-0}" -ge "$REQ_HUGEPAGES_1G" ] 2>/dev/null; then ok "hugepages: $HP_N x 1G"
-else bad "hugepages: ${HP_N:-0} (expected >= $REQ_HUGEPAGES_1G)"; fi
+# 1G pages are the DGX Spark layout. A 64k-page ARM kernel (GH200's
+# -64k kernel) has no 1G hugetlb size at all -- its sizes are 2M, 512M and
+# 16G -- so 512M is the correct choice there, not a misconfiguration. Report
+# the real size and the resulting total; the chart's hugepages.size must
+# match whichever this is (config/values.yaml).
+HP_MB=$(( ${HP_SZ:-0} / 1024 ))
+case "$HP_MB" in
+  1024) ok "hugepage size: 1G" ;;
+  512)  ok "hugepage size: 512M (64k-page kernel; set hugepages.size=512Mi in config/values.yaml)" ;;
+  *)    warn "hugepage size: ${HP_SZ:-none} kB (expected 1G, or 512M on a 64k-page kernel)" ;;
+esac
+HP_TOTAL_GB=$(( ${HP_N:-0} * HP_MB / 1024 ))
+if [ "$HP_TOTAL_GB" -ge "$REQ_HUGEPAGES_1G" ] 2>/dev/null; then ok "hugepages: $HP_N x ${HP_MB}M = ${HP_TOTAL_GB}G"
+else bad "hugepages: ${HP_N:-0} x ${HP_MB}M = ${HP_TOTAL_GB}G (expected >= ${REQ_HUGEPAGES_1G}G)"; fi
 
 sec "CPU isolation"
 CMD="$(cat /proc/cmdline)"

@@ -118,7 +118,7 @@ spec:
             # How the L1 gets the GPU when there is no device plugin: Docker's
             # default runtime is nvidia, and these tell it what to inject.
             - name: NVIDIA_VISIBLE_DEVICES
-              value: "all"
+              value: {{ .Values.l1.visibleDevices | quote }}
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: "all"
           volumeMounts:

@@ -13,6 +13,17 @@ need_tool() {  # need_tool <name>
     x86_64|amd64)  arch=amd64 ;;
     *) echo "unsupported arch $(uname -m) for $name" >&2; return 1 ;;
   esac
+  # helm ships a tarball, not a bare binary: upstream's installer picks the
+  # version and the arch itself.
+  if [ "$name" = helm ]; then
+    echo ">> installing helm for linux/$arch"
+    curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
+      | HELM_INSTALL_DIR="$dest" USE_SUDO=false bash >/dev/null 2>&1 || {
+        echo "failed to install helm" >&2; return 1; }
+    command -v helm >/dev/null 2>&1
+    return
+  fi
+
   case "$name" in
     yq)      url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${arch}" ;;
     kubectl) url="https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/${arch}/kubectl" ;;

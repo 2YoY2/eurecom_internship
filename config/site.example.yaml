@@ -118,11 +118,23 @@ gnb:
   name: "gNB-OAI"
 
 core:
-  # Set deploy: true to run an OAI core in the cluster; false to use an
-  # existing AMF elsewhere on the network.
-  deploy: false
-  amf_ip: "0.0.0.0"          # AMF the gNB registers with (N2/SCTP 38412)
+  # The core is external: this repo deploys a CU and a DU, not a 5G core. Point
+  # these at an AMF that is already running and reachable from this host.
+  # Only the CU uses them -- a DU never speaks NGAP.
+  amf_ip: "0.0.0.0"          # AMF the CU registers with (N2/SCTP 38412)
   gnb_n2_ip: "0.0.0.0"       # this host's address for N2 and N3
+
+# F1: the CU/DU split. Both run on the host's network namespace, so these are
+# loopback addresses on the same box -- distinct ones, because OAI binds them
+# and two processes cannot share 127.0.0.1 on the same port.
+#
+# 127.0.0.1 and .2 are already taken: the L2 reaches Aerial's L1 over nvIPC
+# using those as its "pnf"/"vnf" addresses. Start F1 at .3.
+split:
+  cu_f1_address: "127.0.0.3"
+  du_f1_address: "127.0.0.4"
+  f1c_port: 38472            # F1-C, SCTP
+  f1u_port: 2152             # F1-U, GTP-U
 
 # Absolute CPU core ids. Aerial pins threads to these numbers directly, so they
 # must sit inside the kernel's isolcpus range and must not overlap.

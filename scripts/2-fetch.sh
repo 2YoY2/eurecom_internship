@@ -2,7 +2,7 @@
 # Fetch the whole RAN stack from scratch: Aerial L1 image + source, the matching
 # OAI L2/L3 branch, and the dApp framework. Nothing here is site-specific.
 #
-#   ./scripts/21-fetch-stack.sh
+#   ./scripts/2-fetch.sh
 #
 # Everything lands in ./stack/ (untracked). Re-running is safe: existing clones
 # are fetched and checked out to the pinned ref, existing images are skipped.
@@ -14,7 +14,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/versions.env"
-[ -f "$ROOT/site/versions.env" ] && . "$ROOT/site/versions.env"
+[ -f "$ROOT/config/versions.env" ] && . "$ROOT/config/versions.env"
 
 STACK="${STACK_DIR:-$ROOT/stack}"
 mkdir -p "$STACK"
@@ -66,9 +66,6 @@ clone_at "$OAI_URL" "$OAI_REF" "$STACK/openairinterface5g"
 # ---------------------------------------------------------------- dApp
 clone_at "$SAMPLE_APPS_URL" "$SAMPLE_APPS_REF" "$STACK/aerial-sample-apps"
 
-# ---------------------------------------------------------------- Helm charts
-"$ROOT/scripts/fetch-charts.sh" >/dev/null 2>&1 && echo "   OAI charts ready" || true
-
 step "Summary"
 printf '   stack dir : %s\n' "$STACK"
 for d in aerial-cuda-accelerated-ran openairinterface5g aerial-sample-apps; do
@@ -89,8 +86,8 @@ if [ "$fail" -ne 0 ]; then
 fi
 cat <<EOF
 
->> stack fetched. Next:
-   1. Derive the site config (cuphycontroller + l2_adapter YAML) for your RU
-      and put it in site/  — see docs/VERSIONS.md.
-   2. ./scripts/22-build-dapp.sh   to build the PRB-Power reference dApp.
+>> stack fetched. These trees are read for their config TEMPLATES; nothing here
+   is compiled. Next:
+   1. cp config/site.example.yaml config/site.yaml  and fill it in
+   2. ./scripts/3-cluster.sh
 EOF

@@ -3,8 +3,8 @@
 Every failure documented here was hit for real bringing up a DGX Spark (GB10)
 with Aerial 26-1, OAI `ATB1.0_integration`, and an O-RAN 7.2a RU using this
 repo — in this order. Each one produced misleading symptoms; the fixes are now
-either automated by the scripts or checked by `20-preflight.sh` /
-`34-deploy-du.sh`, but the diagnosis trail is worth keeping because the
+either automated by the scripts or checked by `1-preflight.sh`, but the
+diagnosis trail is worth keeping because the
 symptoms will not point you at the causes.
 
 ## Where the truth lives
@@ -35,8 +35,12 @@ reference set — because the fault is not in any config file.
 out of the message, and sees zeros for every remaining TLV.
 
 **Fix:** build cuBB with `--preset 10_02 -- -DSCF_FAPI_10_04_SRS=ON`
-(`31-build-stack.sh` does this; `34-deploy-du.sh` refuses to deploy a build
-whose CMake cache says `SCF_FAPI_10_04=ON`).
+(`archive/scripts/31-build-stack.sh` does this).
+
+**Note the guard is gone.** That build script used to be followed by a deploy
+that refused an L1 whose CMake cache said `SCF_FAPI_10_04=ON`. The L1 binary now
+ships inside the image, so nothing at deploy time can see how it was compiled —
+this failure is caught by reading the symptoms above, not by a check.
 
 ## 2. Cell starts, every slot errors: `Late slot error` (0x34)
 
@@ -68,7 +72,7 @@ idle states stay enabled. The cmdline looks right; sysfs tells the truth.
 **Fix:** disable states with >10 µs exit latency on the isolated cores:
 `for s in /sys/devices/system/cpu/cpu{<isolated>}/cpuidle/state*; do
 [ "$(cat $s/latency)" -gt 10 ] && echo 1 > $s/disable; done` — and persist it
-with a boot-time unit, because sysfs resets on reboot. `20-preflight.sh` fails
+with a boot-time unit, because sysfs resets on reboot. `1-preflight.sh` fails
 when deep states are enabled on isolated cores.
 
 ## 4. RU classifies 100% of C-plane as EARLY and never radiates
@@ -100,7 +104,7 @@ them does not:
 - wire = UTC: phc2sys `-O 0` **and** kernel TAI offset 0 (lab-only; absolute
   GPS time is off by 37 s but DU and RU agree).
 
-`20-preflight.sh` fails on an inconsistent combination.
+`1-preflight.sh` fails on an inconsistent combination.
 
 ## 5. Benign on DGX Spark: eCPRI flexparser warnings
 
@@ -120,7 +124,7 @@ GTP-U over N3 to the UPF, then the UPF's N6 side outward. The causes look
 identical from the UE, so capture all layers at once during one attach:
 
 ```bash
-./scripts/35-watch-ue.sh        # then attach the UE; Ctrl-C when done
+./scripts/watch-ue.sh        # then attach the UE; Ctrl-C when done
 ```
 
 It records the gNB log, the N3 capture (UDP 2152) and the L1's PRACH activity,
@@ -185,9 +189,10 @@ template's value, which is the safer default.
 ## 9. Traps that cost real time
 
 - **Stale L2 image:** an `oai-gnb-aerial:latest` left over from an earlier
-  setup deploys silently and speaks a different FAPI encoding.
-  `31-build-stack.sh` records the OAI commit it built from and
-  `34-deploy-du.sh` refuses a mismatch.
+  setup deploys silently and speaks a different FAPI encoding. Pin the image by
+  digest or by a real tag in `versions.env` rather than `:latest`, and check
+  what you are about to run with `docker image inspect`. This is the reason
+  `5-images.sh` prints which images exist only in the local store.
 - **Configs changed but pod didn't restart:** rendered configs arrive via
   hostPath, which Helm can't hash. The deploy stamps a config hash into the
   pod annotations; without it a re-render "deploys" the old config forever.

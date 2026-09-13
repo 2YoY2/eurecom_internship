@@ -1,11 +1,11 @@
-# NVIDIA Aerial on Kubernetes — the path from this lab to GPU L1
+# NVIDIA Aerial on Kubernetes — how the GPU L1 slots in
 
 NVIDIA Aerial (cuBB: cuPHY + cuMAC) is a **GPU-accelerated 5G L1**. It does not
 replace the whole gNB: the proven pairing is **OAI L2/L3 (MAC and up) + Aerial L1**,
 talking over NVIDIA's `nvIPC` shared-memory FAPI interface. That's exactly the
 combination NVIDIA and OAI ship as **ARC‑OTA** (Aerial RAN CoLab Over‑the‑Air).
-Everything you build in the main plan (core, Helm, namespaces, scaling) stays;
-only the gNB pod changes.
+Aerial replaces **only the L1**: north of the FAPI boundary — N2 to the AMF, N3
+to the UPF, the Kubernetes and Helm mechanics — nothing changes.
 
 ## 1. Hardware you actually need (per DU site)
 
@@ -36,6 +36,13 @@ Plus node tuning (hugepages, isolated cores, PTP services on the host). Verify w
 `kubectl describe node | grep -A10 Allocatable` — you should see `nvidia.com/gpu`
 and hugepages resources.
 
+**On a unified-memory host (GB10) this route does not work** and the repo does
+not take it: the device plugin cannot build its device map when NVML answers
+`Not Supported` for per-device memory, so the node never advertises
+`nvidia.com/gpu`. `3-cluster.sh` makes nvidia the default Docker runtime
+instead and the GPU is injected into every container — see
+[VERSIONS.md](VERSIONS.md).
+
 ## 3. What the gNB deployment becomes
 
 One pod (or two containers in one pod) per DU site:
@@ -47,23 +54,23 @@ One pod (or two containers in one pod) per DU site:
   `--build-lib nvipc` / the `oai-gnb-aerial` image): runs L2+, config points its
   FAPI south-bound at nvIPC shared memory (`/dev/shm` volume shared between the
   two containers) instead of the built-in PHY.
-- North-bound **nothing changes**: same N2 to `oai-amf`, same N3 to the UPF —
-  the same core you deployed in the main plan serves it.
+- North-bound **nothing changes**: same N2 to the AMF, same N3 to the UPF. The
+  core is external to this repo; `config/site.yaml` just names its AMF.
 
-Scaling model is identical to Phase 6: **one Helm release per cell/DU site**, one
-GPU per DU, same AMF. You scale by adding GPU nodes and releases, and the CU
-(from `e2e_scenarios/case3`) aggregates DUs.
+Scaling is **one Helm release per cell/DU site**, one GPU per DU, same AMF. You
+scale by adding GPU nodes and releases, and the CU (from `e2e_scenarios/case3`)
+aggregates DUs — a gNB is stateful, so you never scale one by raising `replicas`.
 
 ## 4. Sensible order of attack
 
-1. Finish the main plan through Phase 6 (you'll reuse every skill).
-2. Do `case2`/`case3` — CU/DU split. Aerial replaces the DU's L1, so being fluent
-   with `oai-du` + F1 config is the real preparation.
-3. On any server with *any* NVIDIA data-center GPU, practice GPU Operator +
-   Network Operator installs and hugepage/CPU-isolation node tuning.
-4. Get NGC/ARC‑OTA access, then bring up cuBB on the Aerial node **bare-metal
-   first** (NVIDIA's cuBB quickstart), before containerizing into the cluster.
-5. Swap the DU in your Helm topology for the Aerial+OAI‑nvIPC pod.
+1. Get NGC/Aerial access and confirm the host with `1-preflight.sh`.
+2. Bring cuBB up on the node **bare-metal first** (NVIDIA's cuBB quickstart) if
+   the platform is new to you — it separates "does the L1 run here" from "does
+   the pod run here".
+3. Then the script sequence in the [README](../README.md): fetch, build,
+   cluster, render, deploy.
+4. CU/DU split (`case2`/`case3`) once a single DU is serving: Aerial replaces
+   the DU's L1, so `oai-du` + F1 fluency is what generalises.
 
 ## 5. References to keep open
 

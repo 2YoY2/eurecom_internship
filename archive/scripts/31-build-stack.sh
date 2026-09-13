@@ -87,9 +87,9 @@ build_l1() {
     # AERIAL_CUDA_ARCHS=121 skips the other CUDA targets (GB10 is sm_121).
     case "$script" in
       *build_aerial_sdk.sh)
-        cmd="chmod +x '$script' && ./'$script' --preset 10_02 ${AERIAL_CUDA_ARCHS:+--cuda-archs $AERIAL_CUDA_ARCHS} -- -DSCF_FAPI_10_04_SRS=ON -DENABLE_CONFORMANCE_TM_PDSCH_PDCCH=OFF" ;;
+        cmd="bash '$script' --preset 10_02 ${AERIAL_CUDA_ARCHS:+--cuda-archs $AERIAL_CUDA_ARCHS} -- -DSCF_FAPI_10_04_SRS=ON -DENABLE_CONFORMANCE_TM_PDSCH_PDCCH=OFF" ;;
       *)
-        cmd="chmod +x '$script' && ./'$script'" ;;
+        cmd="bash '$script'" ;;
     esac
   else
     echo "   No in-tree build script found. What this release ships:"
@@ -110,9 +110,15 @@ build_l1() {
 
   # SYS_NICE silences the chrt warning: the build script tries to set a
   # real-time policy for itself. Harmless when denied, but noisy.
+  # --user 0:0: the NGC image's default user is "aerial", which cannot write
+  # into a bind-mounted tree owned by whoever cloned it. The build has always
+  # been root-owned on the host (see the chown below); make that explicit
+  # instead of depending on the image's USER line. Invoke the scripts through
+  # bash rather than chmod+exec for the same reason: a checkout without the
+  # execute bit must not be a build failure.
   docker run --rm --name "$BUILD_CT" --gpus all \
     --cpuset-cpus="$cpus" \
-    --cap-add=SYS_NICE \
+    --cap-add=SYS_NICE --user 0:0 \
     -v "$AERIAL_SRC":/opt/nvidia/cuBB \
     -v /usr/src:/usr/src -v /lib/modules:/lib/modules \
     -w /opt/nvidia/cuBB \
@@ -149,12 +155,12 @@ build_l2() {
   local GTL="$AERIAL_SRC/cuPHY-CP/gt_common_libs"
   [ -f "$GTL/pack_nvipc.sh" ] || die "pack_nvipc.sh not found in $GTL"
 
-  docker run --rm --name "$PACK_CT" \
+  docker run --rm --name "$PACK_CT" --user 0:0 \
     -v "$AERIAL_SRC":/opt/nvidia/cuBB \
     -w /opt/nvidia/cuBB/cuPHY-CP/gt_common_libs \
     -e cuBB_SDK=/opt/nvidia/cuBB \
     "$AERIAL_IMAGE:$AERIAL_TAG" \
-    bash -lc "chmod +x pack_nvipc.sh && ./pack_nvipc.sh" \
+    bash -lc "bash pack_nvipc.sh" \
     || die "pack_nvipc.sh failed"
 
   # It runs as root against a bind mount; hand the result back to the user.

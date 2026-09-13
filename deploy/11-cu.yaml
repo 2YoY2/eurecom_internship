@@ -1,0 +1,64 @@
+# The CU: OAI CU-CP + CU-UP in one process, north of F1.
+#
+# It is a separate Deployment, not a third container in the DU pod, because it
+# shares nothing with the L1: F1 is a socket, so the CU can be restarted --
+# which OAI needs fairly often -- without touching the L1 or the fronthaul.
+#
+# Both land on the host's network namespace, so F1 rides loopback here
+# (127.0.0.3 CU <-> 127.0.0.4 DU, set in the generated ConfigMaps). N2/N3 to the
+# core leave from the host's own address.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oai-cu
+  labels:
+    app.kubernetes.io/name: oai-cu
+    app.kubernetes.io/component: cu
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oai-cu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oai-cu
+    spec:
+      # The CU now lives on its own machine, not alongside the DU-Low. It needs
+      # no GPU and no fronthaul -- only routes to the core (N2/N3) and to the
+      # DU (F1) -- so the only thing pinning it is the label.
+      #
+      # Consequence worth knowing: moving the CU changes the address the DU
+      # dials for F1. That address lives in the DU's config, not here.
+      nodeSelector:
+        yoy.ran/role: cu
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: cu-conf
+          configMap: { name: oai-cu-conf }
+      containers:
+        - name: oai-cu
+          image: IMAGE_CU
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            capabilities:
+              drop: [ALL]
+              add:  [SYS_NICE, IPC_LOCK]
+          env:
+            - name: USE_ADDITIONAL_OPTIONS
+              value: "--log_config.global_log_options level,nocolor,utc_time"
+          volumeMounts:
+            - name: cu-conf
+              mountPath: /opt/oai-gnb/etc/gnb.conf
+              subPath: gnb.conf
+          resources: {}
+          livenessProbe:
+            exec:
+              command: [bash, -c, "pgrep -f softmodem >/dev/null"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3

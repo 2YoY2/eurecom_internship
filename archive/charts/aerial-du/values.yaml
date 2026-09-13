@@ -46,6 +46,12 @@ l1:
   # node running one DU does not need. Turn on for a discrete-GPU host where
   # several workloads compete.
   requestGpu: false
+  # What the nvidia runtime injects into the L1 container. "all" on a host
+  # with one plain GPU. On a MIG-enabled GPU (GH200/H100) "all" is NOT enough:
+  # name the MIG device the L1 owns, as "MIG-<uuid>" from `nvidia-smi -L` or
+  # as "<gpu index>:<gi index>" (e.g. "0:1"). cuPHY then partitions that
+  # slice's SMs through MPS exactly as it would a whole GPU.
+  visibleDevices: "all"
 
 l2:
   image:

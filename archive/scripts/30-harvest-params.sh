@@ -152,7 +152,6 @@ gnb:
   name: "$(g gNB_name)"
 
 core:
-  deploy: false
   amf_ip: "${AMF:-0.0.0.0}"
   gnb_n2_ip: "${N2:-0.0.0.0}"
 

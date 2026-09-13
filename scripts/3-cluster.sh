@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install k3s, configured for a real-time RAN host.
 #
-#   ./scripts/32-install-k3s.sh
+#   ./scripts/3-cluster.sh
 #
 # Three decisions worth knowing about:
 #
@@ -171,4 +171,4 @@ echo ">> node resources visible to the scheduler:"
 kubectl get node -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range $k,$v := .status.allocatable}{"   "}{$k}{"="}{$v}{"\n"}{end}{end}' 2>/dev/null \
   | grep -E 'cpu|memory|hugepages|nvidia' || echo "   (node not ready yet)"
 echo
-echo ">> next: ./scripts/33-deploy-du.sh"
+echo ">> next: ./scripts/4-render.sh"

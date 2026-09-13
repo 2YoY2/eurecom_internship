@@ -1,0 +1,100 @@
+# DU-Low: NVIDIA Aerial cuPHY (the L1). One container, alone in its pod.
+#
+# This used to be one pod with two containers, the L1 and the OAI DU-High side by
+# side, because the L2 reached the L1 over nvIPC through shared memory and shared
+# memory does not cross a machine boundary. The DU-High now runs on its own host
+# and talks to this container over FAPI carried on DPDK, so the sidecar is gone
+# and with it the /dev/shm coupling that forced them together.
+#
+# The image carries the L1 binary and its nvIPC library, so there are no hostPath
+# overlays here. It carries no configuration: cuphycontroller_site.yaml, the L2
+# adapter config and the nvIPC yaml all arrive from the l1-config ConfigMap.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aerial-cubb
+  labels:
+    app.kubernetes.io/name: aerial-cubb
+    app.kubernetes.io/component: du-low
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: two L1s cannot hold the fronthaul NIC and the
+  # GPU at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aerial-cubb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aerial-cubb
+    spec:
+      # The GPU, the fronthaul NIC and the FAPI NIC are all properties of one
+      # specific machine. arm64 alone does not pin it; the label does.
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        yoy.ran/role: du-low
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 30
+      volumes:
+        # The host's /dev/shm, NOT an emptyDir: nvIPC's segments must stay
+        # visible to anything else on the box that speaks to the L1.
+        - name: dshm
+          hostPath: { path: /dev/shm, type: Directory }
+        - name: l1-config
+          configMap: { name: l1-config }
+        - name: aerial-log
+          emptyDir: {}
+        - name: hugepage
+          emptyDir: { medium: HugePages }
+        - name: gdrdrv
+          hostPath: { path: /dev/gdrdrv, type: CharDevice }
+      containers:
+        - name: nv-cubb
+          image: IMAGE_DU_LOW
+          # IfNotPresent, not Always: these images may exist only in the node's
+          # local store. Refreshing them is scripts/5-images.sh, a step you ran --
+          # not a policy you hoped for.
+          imagePullPolicy: IfNotPresent
+          # cuPHY drives the fronthaul NIC through DPDK and pins its threads to
+          # absolute core ids; both need more than the capability set can express.
+          securityContext:
+            privileged: true
+          command: [bash, -c]
+          args:
+            - "rm -f /tmp/phy.log && /opt/nvidia/cuBB/run_l1.sh site"
+          env:
+            - { name: cuBB_SDK,                    value: /opt/nvidia/cuBB }
+            - { name: AERIAL_LOG_PATH,             value: /var/log/aerial }
+            - { name: CUDA_MPS_PIPE_DIRECTORY,     value: /tmp/nvidia-mps }
+            - { name: CUDA_MPS_LOG_DIRECTORY,      value: /var/log/nvidia-mps }
+            - { name: CUDA_DEVICE_MAX_CONNECTIONS, value: "8" }
+            - { name: NVIDIA_VISIBLE_DEVICES,      value: "all" }
+            - { name: NVIDIA_DRIVER_CAPABILITIES,  value: "all" }
+          volumeMounts:
+            - { name: aerial-log, mountPath: /var/log/aerial }
+            - { name: dshm,       mountPath: /dev/shm }
+            - { name: hugepage,   mountPath: /dev/hugepages }
+            - name: l1-config
+              mountPath: /opt/nvidia/cuBB/cuPHY-CP/cuphycontroller/config/cuphycontroller_site.yaml
+              subPath: cuphycontroller_site.yaml
+            - name: l1-config
+              mountPath: /opt/nvidia/cuBB/cuPHY-CP/cuphycontroller/config/l2_adapter_config_site.yaml
+              subPath: l2_adapter_config_site.yaml
+            - name: l1-config
+              mountPath: /opt/nvidia/cuBB/cuPHY-CP/cuphycontroller/config/nvipc_l1_dpdk.yaml
+              subPath: nvipc_l1_dpdk.yaml
+          resources:
+            requests: { memory: 8Gi, hugepages-1Gi: 8Gi }
+            limits:   { hugepages-1Gi: 8Gi }
+          # Readiness is "the L1 answered the DU-High", not "the process is up".
+          # failureThreshold x periodSeconds must exceed the startup cost: cuPHY
+          # spends ~160 s initialising kernels on the GPU before it listens.
+          readinessProbe:
+            exec:
+              command: [bash, -c, "grep -qs 'L1 is ready!' /tmp/phy.log /var/log/aerial/phy.log"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 40

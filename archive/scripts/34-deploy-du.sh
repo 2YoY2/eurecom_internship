@@ -28,7 +28,7 @@ step(){ printf '\n\033[1m>> %s\033[0m\n' "$*"; }
 
 step "Preflight"
 need_tool kubectl >/dev/null || die "kubectl unavailable"
-command -v helm >/dev/null 2>&1 || die "helm not installed"
+need_tool helm >/dev/null || die "helm unavailable"
 kubectl get nodes >/dev/null 2>&1 || die "no reachable cluster — run ./scripts/32-install-k3s.sh"
 [ -x "$AERIAL_SRC/build.$ARCH/cuPHY-CP/cuphycontroller/examples/cuphycontroller_scf" ] \
   || die "no L1 binary — run ./scripts/31-build-stack.sh l1"
@@ -108,8 +108,18 @@ CFGHASH="$(cat "$RENDERED"/cuphycontroller_site.yaml "$RENDERED"/gnb.conf \
              "$CFGDIR/$L2A" 2>/dev/null | sha256sum | cut -c1-16)"
 echo "   config hash: $CFGHASH"
 
+# Per-site chart overrides: hugepage size, image registry, MIG device, node
+# selector. Untracked, like everything in site/. Applied with -f so the
+# --set values below (which come from build artefacts) still win.
+SITE_VALUES=()
+if [ -f "$ROOT/site/values.yaml" ]; then
+  SITE_VALUES=(-f "$ROOT/site/values.yaml")
+  echo "   site overrides: site/values.yaml"
+fi
+
 step "Deploying $REL to namespace $NS"
 helm upgrade --install "$REL" "$ROOT/charts/aerial-du" -n "$NS" \
+  "${SITE_VALUES[@]}" \
   --set l1.cubbHostPath="$AERIAL_SRC" \
   --set l1.configProfile=site \
   --set l1.sharePath="$SHARE" \

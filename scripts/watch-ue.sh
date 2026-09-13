@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Watch a UE attach and localize WHERE the user plane breaks.
 #
-#   ./scripts/35-watch-ue.sh          # watch for 5 minutes (Ctrl-C to stop early)
-#   ./scripts/35-watch-ue.sh 900      # watch for 15 minutes
+#   ./scripts/watch-ue.sh          # watch for 5 minutes (Ctrl-C to stop early)
+#   ./scripts/watch-ue.sh 900      # watch for 15 minutes
 #
 # "The UE attaches but has no internet" has several very different causes that
 # look identical from the UE. This runs all the observations at once, so one
@@ -12,20 +12,20 @@
 #   NGAP/NAS    -- gNB log: registration, initial context, PDU session setup
 #   N3 GTP-U    -- tcpdump on 2152: is the tunnel carrying traffic, which way?
 #
-# It changes nothing. Everything lands in site/ue-capture-<timestamp>/ (site/
+# It changes nothing. Everything lands in config/ue-capture-<timestamp>/ (config/
 # is untracked) and a verdict is printed at the end.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-. "$ROOT/scripts/lib-tools.sh"
+. "$ROOT/scripts/lib.sh"
 export PATH="$HOME/.local/bin:$PATH"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 
 NS="${NAMESPACE:-ran}"
 SEL="app.kubernetes.io/name=aerial-du"
 DUR="${1:-300}"
-OUT="$ROOT/site/ue-capture-$(date +%Y%m%d-%H%M%S)"
-SITE="$ROOT/site/site.yaml"
+OUT="$ROOT/config/ue-capture-$(date +%Y%m%d-%H%M%S)"
+SITE="$ROOT/config/site.yaml"
 
 die() { printf '\033[31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 step(){ printf '\n\033[1m>> %s\033[0m\n' "$*"; }

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Install a pre-commit hook that refuses to commit site-identifying data.
 #
-#   ./scripts/install-guardrails.sh
+#   ./scripts/guardrails.sh
 #
 # This repo is PUBLIC and generic: it must work on any Aerial host. Anything
 # specific to one deployment -- MAC addresses, fronthaul VLANs, PCIe addresses,
-# management IPs, hostnames, NGC keys -- belongs in the untracked site/
+# management IPs, hostnames, NGC keys -- belongs in the untracked config/
 # directory, never in a tracked file.
 #
 # Override for a false positive:  git commit --no-verify
@@ -65,7 +65,7 @@ if [ "$fail" -ne 0 ]; then
   cat >&2 <<'MSG'
 
 This repo is public and vendor-neutral. Site-specific values belong in the
-untracked site/ directory (see README "Site-specific configuration").
+untracked config/ directory (see README "Site-specific configuration").
 
 If this is genuinely a false positive:  git commit --no-verify
 MSG
@@ -76,8 +76,8 @@ HOOK_EOF
 
 chmod +x "$HOOK"
 mkdir -p "$ROOT/site"
-[ -f "$ROOT/site/README.md" ] || cat > "$ROOT/site/README.md" <<'EOF'
-# site/ — untracked, per-deployment values
+[ -f "$ROOT/config/README.md" ] || cat > "$ROOT/config/README.md" <<'EOF'
+# config/ — untracked, per-deployment values
 
 Everything in this directory is ignored by git (except this file).
 
@@ -88,7 +88,7 @@ generic and safe to publish.
 EOF
 
 echo ">> pre-commit hook installed: $HOOK"
-echo ">> site/ created (untracked)"
+echo ">> config/ created (untracked)"
 # Self-test: stage a file with a MAC and invoke the hook directly. No commit is
 # ever created, so there is nothing to roll back if the hook misbehaves.
 echo ">> self-test:"

@@ -1,7 +1,7 @@
 # Verified version matrix — Aerial + OAI + dApp on GB10 (DGX Spark)
 
 Researched 2026-08-22. Pins live in [`versions.env`](../versions.env); override
-per-deployment values in `site/versions.env`.
+per-deployment values in `config/versions.env`.
 
 ## The validated set
 
@@ -25,7 +25,7 @@ fails later at nFAPI handshake, which is a much harder thing to debug.
 
 **The L1 build preset is part of the contract.** cuBB must be built with
 `--preset 10_02 -- -DSCF_FAPI_10_04_SRS=ON -DENABLE_CONFORMANCE_TM_PDSCH_PDCCH=OFF`
-(what `31-build-stack.sh` now passes). The default `perf` preset sets
+(what `archive/scripts/31-build-stack.sh` passes). The default `perf` preset sets
 `SCF_FAPI_10_04=ON`, which changes the TLV header from 16-bit to 32-bit length
 fields — OAI always writes 16-bit ones. A default-built L1 misreads the first
 CONFIG.request TLV's length as megabytes, walks out of the message, logs
@@ -161,7 +161,7 @@ So the DU pod is deliberately **Burstable** (memory request, no cpu request):
 
 The corollary is that `kubepods.slice` must be allowed those cores. A host that
 previously ran the L1 outside Kubernetes may fence kubepods away from them — see
-`32-install-k3s.sh`, which detects and widens that. Excluding them is redundant
+`3-cluster.sh`, which detects and widens that. Excluding them is redundant
 anyway: `isolcpus` already stops the scheduler placing ordinary threads there,
 so only a deliberate `sched_setaffinity` ever lands on an isolated core.
 

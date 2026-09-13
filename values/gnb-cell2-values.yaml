@@ -1,7 +1,0 @@
-# Overrides for the second gNB (cell2), installed in namespace oai-cell2.
-# Only what differs from the chart defaults:
-config:
-  gnbName: "oai-gnb-cell2"
-  # The core lives in the "oai" namespace, so the short name "oai-amf" would not
-  # resolve from oai-cell2 — use the fully-qualified in-cluster DNS name:
-  amfHost: "oai-amf.oai.svc.cluster.local"
