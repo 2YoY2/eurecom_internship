@@ -51,6 +51,14 @@ spec:
           emptyDir: { medium: HugePages }
         - name: gdrdrv
           hostPath: { path: /dev/gdrdrv, type: CharDevice }
+        # libcuphy.so ships SASS only for sm_90; this GPU is compute capability
+        # 12.1, so every kernel is JIT-compiled from PTX at load. With
+        # CUDA_MODULE_LOADING=EAGER that happens for all of them during startup.
+        # The driver caches the result keyed on cubin + GPU + driver -- none of
+        # which change between restarts -- but the cache lives inside the
+        # container and is empty every time. A hostPath keeps it.
+        - name: cuda-cache
+          hostPath: { path: /var/cache/cuda-l1, type: DirectoryOrCreate }
       containers:
         - name: nv-cubb
           image: IMAGE_DU_LOW
@@ -73,10 +81,15 @@ spec:
             - { name: CUDA_DEVICE_MAX_CONNECTIONS, value: "8" }
             - { name: NVIDIA_VISIBLE_DEVICES,      value: "all" }
             - { name: NVIDIA_DRIVER_CAPABILITIES,  value: "all" }
+            - { name: CUDA_CACHE_PATH,             value: /var/cache/cuda }
+            # 4 GiB, not the 256 MiB default: binaries larger than the cache are
+            # silently not cached at all, which would look like the cache failing.
+            - { name: CUDA_CACHE_MAXSIZE,          value: "4294967296" }
           volumeMounts:
             - { name: aerial-log, mountPath: /var/log/aerial }
             - { name: dshm,       mountPath: /dev/shm }
             - { name: hugepage,   mountPath: /dev/hugepages }
+            - { name: cuda-cache, mountPath: /var/cache/cuda }
             - name: l1-config
               mountPath: /opt/nvidia/cuBB/cuPHY-CP/cuphycontroller/config/cuphycontroller_site.yaml
               subPath: cuphycontroller_site.yaml
